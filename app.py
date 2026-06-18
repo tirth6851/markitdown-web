@@ -31,5 +31,29 @@ def convert_file():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/convert-text', methods=['POST'])
+def convert_text():
+    data = request.get_json()
+    if not data or 'content' not in data:
+        return jsonify({"error": "No content provided"}), 400
+
+    content = data['content']
+    try:
+        ext = '.html' if content.strip().startswith('<') else '.txt'
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(content)
+            temp_path = temp_file.name
+
+        md = MarkItDown()
+        result = md.convert(temp_path)
+        os.remove(temp_path)
+
+        return jsonify({"markdown": result.text_content})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True)

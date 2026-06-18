@@ -3,89 +3,282 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File to Markdown Converter</title>
+    <title>MarkItDown Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .drop-active { border-color: #4ade80 !important; background-color: #14532d22 !important; }
+        #dropZone { transition: border-color 0.15s, background-color 0.15s; }
+        #textInput { resize: none; field-sizing: content; min-height: 44px; max-height: 200px; }
+        .copy-btn:active { transform: scale(0.95); }
+        pre { white-space: pre-wrap; word-break: break-word; }
+    </style>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans">
-    <div class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-700">
-        <h1 class="text-3xl font-bold mb-6 text-green-400">MarkItDown Converter</h1>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
 
-        <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-300 mb-2">Upload a file</label>
-            <input type="file" id="fileInput"
-                   class="block w-full text-sm text-gray-400
-                          file:mr-4 file:py-2 file:px-4
-                          file:rounded-md file:border-0
-                          file:text-sm file:font-semibold
-                          file:bg-green-500 file:text-gray-900
-                          hover:file:bg-green-400 transition-colors">
+    <!-- Header -->
+    <header class="border-b border-gray-800 px-6 py-4 flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center text-gray-950 font-bold text-sm">M↓</div>
+        <h1 class="text-lg font-semibold text-white">MarkItDown</h1>
+        <span class="text-xs text-gray-500 ml-1">File & text to Markdown converter</span>
+    </header>
+
+    <!-- Output area -->
+    <main class="flex-1 overflow-y-auto px-4 py-6 max-w-3xl w-full mx-auto flex flex-col gap-4" id="outputArea">
+        <!-- Placeholder shown before any conversion -->
+        <div id="emptyState" class="flex-1 flex flex-col items-center justify-center text-gray-600 select-none py-16">
+            <div class="text-5xl mb-4">📄</div>
+            <p class="text-lg font-medium text-gray-500">Drop a file, paste text, or attach a file below</p>
+            <p class="text-sm mt-1">Supports PDF, Word, Excel, PowerPoint, images, HTML, and more</p>
         </div>
+        <!-- Conversion results appear here -->
+        <div id="results" class="flex flex-col gap-4"></div>
+    </main>
 
-        <div class="flex gap-4 mb-6">
-            <button id="convertBtn" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-500 transition-colors font-medium">
-                Convert to Markdown
-            </button>
-            <button id="saveBtn" class="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium" disabled>
-                Save As .md
-            </button>
-        </div>
+    <!-- Chat-style input box -->
+    <div class="border-t border-gray-800 bg-gray-950 px-4 py-4">
+        <div class="max-w-3xl mx-auto">
+            <div id="dropZone"
+                 class="relative border border-gray-700 rounded-2xl bg-gray-900 focus-within:border-green-500 transition-colors">
 
-        <div>
-            <textarea id="markdownOutput"
-                      class="w-full h-96 p-4 bg-gray-900 border border-gray-700 rounded-md font-mono text-sm text-gray-300 focus:ring-2 focus:ring-green-400 focus:border-transparent outline-none resize-y"
-                      placeholder="Your converted markdown will appear here..." readonly></textarea>
+                <!-- File chip (shown when a file is selected) -->
+                <div id="fileChip" class="hidden items-center gap-2 px-4 pt-3">
+                    <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-1.5 text-sm text-gray-300 max-w-xs truncate">
+                        <span id="fileIcon">📎</span>
+                        <span id="fileName" class="truncate max-w-48"></span>
+                        <button id="removeFile" class="ml-1 text-gray-500 hover:text-red-400 transition-colors text-xs">✕</button>
+                    </div>
+                </div>
+
+                <!-- Text input -->
+                <textarea
+                    id="textInput"
+                    class="w-full bg-transparent px-4 py-3 text-sm text-gray-200 placeholder-gray-600 outline-none border-none"
+                    placeholder="Paste text or a URL, or attach a file below…"
+                    rows="1"
+                ></textarea>
+
+                <!-- Bottom toolbar -->
+                <div class="flex items-center justify-between px-3 pb-3">
+                    <div class="flex items-center gap-2">
+                        <!-- Attach button -->
+                        <button id="attachBtn"
+                                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-800">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                            </svg>
+                            Attach
+                        </button>
+                        <input type="file" id="fileInput" class="hidden" />
+                        <span class="text-gray-700 text-xs hidden" id="dropHint">or drag a file anywhere</span>
+                    </div>
+
+                    <!-- Convert button -->
+                    <button id="convertBtn"
+                            class="flex items-center gap-1.5 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-gray-950 text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                        <span id="convertLabel">Convert</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Drag overlay -->
+                <div id="dragOverlay"
+                     class="hidden absolute inset-0 rounded-2xl border-2 border-green-500 bg-green-500/10 flex items-center justify-center pointer-events-none">
+                    <p class="text-green-400 font-medium text-sm">Drop to attach</p>
+                </div>
+            </div>
+            <p class="text-center text-xs text-gray-700 mt-2">Supports PDF · Word · Excel · PowerPoint · Images · HTML · CSV · JSON</p>
         </div>
     </div>
 
     <script>
-        const fileInput = document.getElementById('fileInput');
-        const convertBtn = document.getElementById('convertBtn');
-        const saveBtn = document.getElementById('saveBtn');
-        const markdownOutput = document.getElementById('markdownOutput');
-        let currentMarkdown = "";
+        const textInput    = document.getElementById('textInput');
+        const fileInput    = document.getElementById('fileInput');
+        const attachBtn    = document.getElementById('attachBtn');
+        const convertBtn   = document.getElementById('convertBtn');
+        const convertLabel = document.getElementById('convertLabel');
+        const fileChip     = document.getElementById('fileChip');
+        const fileName     = document.getElementById('fileName');
+        const fileIcon     = document.getElementById('fileIcon');
+        const removeFile   = document.getElementById('removeFile');
+        const dropZone     = document.getElementById('dropZone');
+        const dragOverlay  = document.getElementById('dragOverlay');
+        const results      = document.getElementById('results');
+        const emptyState   = document.getElementById('emptyState');
 
-        convertBtn.addEventListener('click', async () => {
-            if (!fileInput.files.length) {
-                alert("Please choose a file first.");
+        let selectedFile = null;
+
+        // Auto-grow textarea
+        textInput.addEventListener('input', () => {
+            textInput.style.height = 'auto';
+            textInput.style.height = Math.min(textInput.scrollHeight, 200) + 'px';
+        });
+
+        // Ctrl+Enter to convert
+        textInput.addEventListener('keydown', e => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') convert();
+        });
+
+        // Attach button
+        attachBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) setFile(fileInput.files[0]);
+        });
+
+        removeFile.addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            fileChip.classList.add('hidden');
+            fileChip.classList.remove('flex');
+        });
+
+        function setFile(file) {
+            selectedFile = file;
+            fileName.textContent = file.name;
+            fileIcon.textContent = iconForFile(file.name);
+            fileChip.classList.remove('hidden');
+            fileChip.classList.add('flex');
+        }
+
+        function iconForFile(name) {
+            const ext = name.split('.').pop().toLowerCase();
+            const map = { pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊',
+                          ppt:'📽', pptx:'📽', png:'🖼', jpg:'🖼', jpeg:'🖼',
+                          gif:'🖼', webp:'🖼', html:'🌐', htm:'🌐',
+                          csv:'📊', json:'📋', txt:'📃', md:'📋' };
+            return map[ext] || '📎';
+        }
+
+        // Drag and drop — whole page
+        document.addEventListener('dragover', e => { e.preventDefault(); dragOverlay.classList.remove('hidden'); dropZone.classList.add('drop-active'); });
+        document.addEventListener('dragleave', e => { if (!e.relatedTarget) { dragOverlay.classList.add('hidden'); dropZone.classList.remove('drop-active'); } });
+        document.addEventListener('drop', e => {
+            e.preventDefault();
+            dragOverlay.classList.add('hidden');
+            dropZone.classList.remove('drop-active');
+            if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+        });
+
+        // Paste file from clipboard (e.g. Ctrl+V a copied image)
+        document.addEventListener('paste', e => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.kind === 'file') {
+                    e.preventDefault();
+                    setFile(item.getAsFile());
+                    return;
+                }
+            }
+        });
+
+        // Convert
+        convertBtn.addEventListener('click', convert);
+
+        async function convert() {
+            const hasFile = !!selectedFile;
+            const hasText = textInput.value.trim().length > 0;
+
+            if (!hasFile && !hasText) {
+                textInput.focus();
+                textInput.placeholder = 'Please paste some text or attach a file first…';
                 return;
             }
-            convertBtn.textContent = "Converting...";
-            convertBtn.disabled = true;
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            try {
-                const response = await fetch('/api/convert', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    currentMarkdown = data.markdown;
-                    markdownOutput.value = currentMarkdown;
-                    saveBtn.disabled = false;
-                } else {
-                    alert("Error: " + data.error);
-                }
-            } catch (error) {
-                alert("Conversion failed. Is the Flask backend running?");
-            } finally {
-                convertBtn.textContent = "Convert to Markdown";
-                convertBtn.disabled = false;
-            }
-        });
 
-        saveBtn.addEventListener('click', () => {
-            if (!currentMarkdown) return;
-            const originalName = fileInput.files[0].name;
-            const baseName = originalName.substring(0, originalName.lastIndexOf('.')) || originalName;
-            const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${baseName}.md`;
-            a.click();
-            URL.revokeObjectURL(url);
-        });
+            convertBtn.disabled = true;
+            convertLabel.textContent = 'Converting…';
+
+            try {
+                let markdown;
+                if (hasFile) {
+                    markdown = await convertFile(selectedFile);
+                } else {
+                    markdown = await convertText(textInput.value.trim());
+                }
+                appendResult(hasFile ? selectedFile.name : 'Pasted text', markdown);
+
+                // Clear inputs after success
+                if (hasFile) {
+                    removeFile.click();
+                } else {
+                    textInput.value = '';
+                    textInput.style.height = 'auto';
+                }
+            } catch (err) {
+                appendError(err.message);
+            } finally {
+                convertBtn.disabled = false;
+                convertLabel.textContent = 'Convert';
+            }
+        }
+
+        async function convertFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            const res = await fetch('/api/convert', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Conversion failed');
+            return data.markdown;
+        }
+
+        async function convertText(text) {
+            const res = await fetch('/api/convert-text', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: text })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Conversion failed');
+            return data.markdown;
+        }
+
+        function appendResult(source, markdown) {
+            emptyState.classList.add('hidden');
+            const card = document.createElement('div');
+            card.className = 'bg-gray-900 border border-gray-800 rounded-xl overflow-hidden';
+            card.innerHTML = `
+                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
+                    <span class="text-xs text-gray-400 font-medium truncate">${escHtml(source)}</span>
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-4">
+                        <button class="copy-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-gray-800">Copy</button>
+                        <button class="save-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-gray-800">Save .md</button>
+                    </div>
+                </div>
+                <pre class="px-4 py-3 text-sm text-gray-300 font-mono overflow-x-auto">${escHtml(markdown)}</pre>
+            `;
+
+            const slug = source.includes('.') ? source.substring(0, source.lastIndexOf('.')) : source;
+            card.querySelector('.copy-btn').addEventListener('click', function() {
+                navigator.clipboard.writeText(markdown);
+                this.textContent = 'Copied!';
+                setTimeout(() => this.textContent = 'Copy', 1500);
+            });
+            card.querySelector('.save-btn').addEventListener('click', () => {
+                const blob = new Blob([markdown], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = slug + '.md'; a.click();
+                URL.revokeObjectURL(url);
+            });
+
+            results.appendChild(card);
+            card.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+
+        function appendError(msg) {
+            emptyState.classList.add('hidden');
+            const el = document.createElement('div');
+            el.className = 'bg-red-950 border border-red-800 text-red-300 rounded-xl px-4 py-3 text-sm';
+            el.textContent = 'Error: ' + msg;
+            results.appendChild(el);
+            el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+
+        function escHtml(str) {
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
     </script>
 </body>
 </html>
