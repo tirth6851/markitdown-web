@@ -219,4 +219,5 @@ __marimo__/
 
 # Playwright MCP test artifacts
 .playwright-mcp/
-*.png
+test-*.png
+page-*.png

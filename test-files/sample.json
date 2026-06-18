@@ -1,0 +1,45 @@
+{
+  "project": "MarkItDown Test",
+  "version": "1.0.0",
+  "description": "Sample JSON file for converter testing",
+  "team": [
+    {
+      "name": "Alice",
+      "role": "Backend",
+      "languages": [
+        "Python",
+        "Go"
+      ]
+    },
+    {
+      "name": "Bob",
+      "role": "Frontend",
+      "languages": [
+        "TypeScript",
+        "CSS"
+      ]
+    },
+    {
+      "name": "Carol",
+      "role": "DevOps",
+      "languages": [
+        "Bash",
+        "YAML"
+      ]
+    }
+  ],
+  "config": {
+    "maxFileSize": "50MB",
+    "supportedFormats": [
+      "pdf",
+      "docx",
+      "xlsx",
+      "pptx",
+      "html",
+      "csv",
+      "json",
+      "txt"
+    ],
+    "deployed": true
+  }
+}
