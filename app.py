@@ -8,6 +8,53 @@ app = Flask(__name__)
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
+IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
+
+# EXIF tag IDs we care about (subset of PIL.ExifTags.TAGS)
+_EXIF_LABELS = {
+    271:   'Camera Make',
+    272:   'Camera Model',
+    306:   'Date/Time',
+    270:   'Description',
+    315:   'Artist',
+    33432: 'Copyright',
+    36867: 'Date Taken',
+    40962: 'Image Width',
+    40963: 'Image Height',
+}
+
+
+def _image_to_markdown(path, filename):
+    from PIL import Image
+
+    img = Image.open(path)
+    w, h = img.size
+    fmt = img.format or os.path.splitext(filename)[1].lstrip('.').upper()
+
+    lines = [
+        f"# {filename}",
+        "",
+        "| Property | Value |",
+        "| --- | --- |",
+        f"| Format | {fmt} |",
+        f"| Dimensions | {w} × {h} px |",
+        f"| Color mode | {img.mode} |",
+    ]
+
+    try:
+        exif = img.getexif()
+        rows = []
+        for tag_id, label in _EXIF_LABELS.items():
+            val = exif.get(tag_id)
+            if val:
+                rows.append(f"| {label} | {str(val)[:120]} |")
+        if rows:
+            lines += ["", "## EXIF Metadata", "| Property | Value |", "| --- | --- |"] + rows
+    except Exception:
+        pass
+
+    return '\n'.join(lines)
+
 
 @app.route('/api/convert', methods=['POST'])
 def convert_file():
@@ -20,14 +67,19 @@ def convert_file():
 
     temp_path = None
     try:
-        ext = os.path.splitext(file.filename)[1]
+        ext = os.path.splitext(file.filename)[1].lower()
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             file.save(tmp.name)
             temp_path = tmp.name
 
-        md = MarkItDown()
-        result = md.convert(temp_path)
-        return jsonify({"markdown": result.text_content})
+        if ext in IMAGE_EXTS:
+            markdown = _image_to_markdown(temp_path, file.filename)
+        else:
+            md = MarkItDown()
+            result = md.convert(temp_path)
+            markdown = result.text_content
+
+        return jsonify({"markdown": markdown})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
