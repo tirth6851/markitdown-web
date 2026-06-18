@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File to Markdown Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans">
+    <div class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-xl shadow-lg border border-gray-700">
+        <h1 class="text-3xl font-bold mb-6 text-green-400">MarkItDown Converter</h1>
+
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-300 mb-2">Upload a file</label>
+            <input type="file" id="fileInput"
+                   class="block w-full text-sm text-gray-400
+                          file:mr-4 file:py-2 file:px-4
+                          file:rounded-md file:border-0
+                          file:text-sm file:font-semibold
+                          file:bg-green-500 file:text-gray-900
+                          hover:file:bg-green-400 transition-colors">
+        </div>
+
+        <div class="flex gap-4 mb-6">
+            <button id="convertBtn" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-500 transition-colors font-medium">
+                Convert to Markdown
+            </button>
+            <button id="saveBtn" class="bg-green-600 text-white px-6 py-2 rounded-md hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium" disabled>
+                Save As .md
+            </button>
+        </div>
+
+        <div>
+            <textarea id="markdownOutput"
+                      class="w-full h-96 p-4 bg-gray-900 border border-gray-700 rounded-md font-mono text-sm text-gray-300 focus:ring-2 focus:ring-green-400 focus:border-transparent outline-none resize-y"
+                      placeholder="Your converted markdown will appear here..." readonly></textarea>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const markdownOutput = document.getElementById('markdownOutput');
+        let currentMarkdown = "";
+
+        convertBtn.addEventListener('click', async () => {
+            if (!fileInput.files.length) {
+                alert("Please choose a file first.");
+                return;
+            }
+            convertBtn.textContent = "Converting...";
+            convertBtn.disabled = true;
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            try {
+                const response = await fetch('http://127.0.0.1:5000/api/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    currentMarkdown = data.markdown;
+                    markdownOutput.value = currentMarkdown;
+                    saveBtn.disabled = false;
+                } else {
+                    alert("Error: " + data.error);
+                }
+            } catch (error) {
+                alert("Conversion failed. Is the Flask backend running?");
+            } finally {
+                convertBtn.textContent = "Convert to Markdown";
+                convertBtn.disabled = false;
+            }
+        });
+
+        saveBtn.addEventListener('click', () => {
+            if (!currentMarkdown) return;
+            const originalName = fileInput.files[0].name;
+            const baseName = originalName.substring(0, originalName.lastIndexOf('.')) || originalName;
+            const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${baseName}.md`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
