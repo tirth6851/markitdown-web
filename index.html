@@ -15,11 +15,48 @@
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
 
+    <!-- Privacy / Consent Modal -->
+    <div id="consentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-md w-full mx-4 p-6 shadow-2xl">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-8 h-8 rounded-lg bg-yellow-500 flex items-center justify-center text-gray-950 font-bold text-base">!</div>
+                <h2 class="text-white font-semibold text-lg">Before you continue</h2>
+            </div>
+            <p class="text-gray-400 text-sm mb-5 leading-relaxed">
+                This tool processes files and text you provide on the server. Please review and confirm the following before using the converter.
+            </p>
+            <div class="flex flex-col gap-4 mb-6">
+                <label class="flex items-start gap-3 cursor-pointer group">
+                    <input type="checkbox" id="ack1" class="mt-0.5 w-4 h-4 accent-green-500 flex-shrink-0 cursor-pointer">
+                    <span class="text-sm text-gray-300 leading-relaxed group-hover:text-gray-200 transition-colors">
+                        I understand that uploaded files or pasted content <strong class="text-white">may contain sensitive data</strong>, and I will not upload anything I am not authorised to share.
+                    </span>
+                </label>
+                <label class="flex items-start gap-3 cursor-pointer group">
+                    <input type="checkbox" id="ack2" class="mt-0.5 w-4 h-4 accent-green-500 flex-shrink-0 cursor-pointer">
+                    <span class="text-sm text-gray-300 leading-relaxed group-hover:text-gray-200 transition-colors">
+                        I confirm I have the <strong class="text-white">right to upload and process</strong> the content I am submitting (e.g. I own it, or have permission).
+                    </span>
+                </label>
+                <label class="flex items-start gap-3 cursor-pointer group">
+                    <input type="checkbox" id="ack3" class="mt-0.5 w-4 h-4 accent-green-500 flex-shrink-0 cursor-pointer">
+                    <span class="text-sm text-gray-300 leading-relaxed group-hover:text-gray-200 transition-colors">
+                        I accept that files are processed on the server and I take <strong class="text-white">responsibility for the content</strong> I submit.
+                    </span>
+                </label>
+            </div>
+            <button id="acceptBtn" disabled
+                class="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-gray-950 font-semibold py-2.5 rounded-xl transition-colors text-sm">
+                Accept &amp; Continue
+            </button>
+        </div>
+    </div>
+
     <!-- Header -->
     <header class="border-b border-gray-800 px-6 py-4 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center text-gray-950 font-bold text-sm">M↓</div>
         <h1 class="text-lg font-semibold text-white">MarkItDown</h1>
-        <span class="text-xs text-gray-500 ml-1">File & text to Markdown converter</span>
+        <span class="text-xs text-gray-500 ml-1">File &amp; text to Markdown converter</span>
     </header>
 
     <!-- Output area -->
@@ -93,6 +130,33 @@
     </div>
 
     <script>
+        // ── Consent gate ─────────────────────────────────────────────────────────
+        const CONSENT_KEY = 'markitdown_consent_v1';
+        let consentGiven = localStorage.getItem(CONSENT_KEY) === '1';
+
+        const consentModal = document.getElementById('consentModal');
+        const acceptBtn    = document.getElementById('acceptBtn');
+        const ack1         = document.getElementById('ack1');
+        const ack2         = document.getElementById('ack2');
+        const ack3         = document.getElementById('ack3');
+
+        function updateAcceptBtn() {
+            acceptBtn.disabled = !(ack1.checked && ack2.checked && ack3.checked);
+        }
+        [ack1, ack2, ack3].forEach(cb => cb.addEventListener('change', updateAcceptBtn));
+
+        acceptBtn.addEventListener('click', () => {
+            if (!ack1.checked || !ack2.checked || !ack3.checked) return;
+            localStorage.setItem(CONSENT_KEY, '1');
+            consentGiven = true;
+            consentModal.classList.add('hidden');
+        });
+
+        if (consentGiven) {
+            consentModal.classList.add('hidden');
+        }
+
+        // ── Main UI ───────────────────────────────────────────────────────────────
         const textInput    = document.getElementById('textInput');
         const fileInput    = document.getElementById('fileInput');
         const attachBtn    = document.getElementById('attachBtn');
@@ -178,6 +242,12 @@
         convertBtn.addEventListener('click', convert);
 
         async function convert() {
+            // Hard gate: consent must be given before any conversion
+            if (!consentGiven) {
+                consentModal.classList.remove('hidden');
+                return;
+            }
+
             const hasFile = !!selectedFile;
             const hasText = textInput.value.trim().length > 0;
 

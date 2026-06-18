@@ -6,6 +6,8 @@ import os
 
 app = Flask(__name__)
 CORS(app)
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+
 
 @app.route('/api/convert', methods=['POST'])
 def convert_file():
@@ -16,20 +18,22 @@ def convert_file():
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
+    temp_path = None
     try:
         ext = os.path.splitext(file.filename)[1]
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
-            file.save(temp_file.name)
-            temp_path = temp_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            file.save(tmp.name)
+            temp_path = tmp.name
 
         md = MarkItDown()
         result = md.convert(temp_path)
-        os.remove(temp_path)
-
         return jsonify({"markdown": result.text_content})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 @app.route('/api/convert-text', methods=['POST'])
@@ -39,20 +43,22 @@ def convert_text():
         return jsonify({"error": "No content provided"}), 400
 
     content = data['content']
+    temp_path = None
     try:
         ext = '.html' if content.strip().startswith('<') else '.txt'
-        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, mode='w', encoding='utf-8') as temp_file:
-            temp_file.write(content)
-            temp_path = temp_file.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext, mode='w', encoding='utf-8') as tmp:
+            tmp.write(content)
+            temp_path = tmp.name
 
         md = MarkItDown()
         result = md.convert(temp_path)
-        os.remove(temp_path)
-
         return jsonify({"markdown": result.text_content})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 if __name__ == '__main__':
