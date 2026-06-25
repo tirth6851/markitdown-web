@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from markitdown import MarkItDown
 import tempfile
@@ -7,6 +7,12 @@ import os
 app = Flask(__name__)
 CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
+
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+@app.route('/')
+def index():
+    return send_from_directory(_ROOT, 'index.html')
 
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.heic', '.heif'}
 

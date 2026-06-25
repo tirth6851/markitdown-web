@@ -5,12 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MarkItDown Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
     <style>
         .drop-active { border-color: #4ade80 !important; background-color: #14532d22 !important; }
         #dropZone { transition: border-color 0.15s, background-color 0.15s; }
         #textInput { resize: none; field-sizing: content; min-height: 44px; max-height: 200px; }
         .copy-btn:active { transform: scale(0.95); }
         pre { white-space: pre-wrap; word-break: break-word; }
+
+        /* Tab state — not Tailwind so it works reliably with dynamic JS toggles */
+        .result-tab { color: #6b7280; transition: color 0.15s, background-color 0.15s; }
+        .result-tab.tab-active { background: #374151; color: #f3f4f6; }
+
+        /* Markdown rendered preview */
+        .md-preview { color: #d1d5db; line-height: 1.65; font-size: 0.875rem; }
+        .md-preview h1,.md-preview h2,.md-preview h3,
+        .md-preview h4,.md-preview h5,.md-preview h6 { color: #f3f4f6; font-weight: 600; margin: 1em 0 0.4em; }
+        .md-preview h1 { font-size: 1.4em; border-bottom: 1px solid #374151; padding-bottom: 0.25em; }
+        .md-preview h2 { font-size: 1.2em; }
+        .md-preview h3 { font-size: 1.05em; }
+        .md-preview p { margin: 0.5em 0; }
+        .md-preview a { color: #4ade80; text-decoration: underline; }
+        .md-preview a:hover { color: #86efac; }
+        .md-preview strong { color: #f3f4f6; }
+        .md-preview em { font-style: italic; }
+        .md-preview code { background: #1f2937; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.875em; font-family: ui-monospace,monospace; }
+        .md-preview pre { background: #111827; padding: 0.875rem; border-radius: 6px; overflow-x: auto; margin: 0.75em 0; }
+        .md-preview pre code { background: none; padding: 0; font-size: 0.875em; }
+        .md-preview ul,.md-preview ol { padding-left: 1.5rem; margin: 0.5em 0; }
+        .md-preview li { margin: 0.2em 0; }
+        .md-preview table { border-collapse: collapse; width: 100%; margin: 0.75em 0; font-size: 0.875em; }
+        .md-preview th,.md-preview td { border: 1px solid #374151; padding: 0.375rem 0.625rem; text-align: left; }
+        .md-preview th { background: #1f2937; font-weight: 600; color: #f3f4f6; }
+        .md-preview tr:nth-child(even) td { background: #111827; }
+        .md-preview blockquote { border-left: 3px solid #4b5563; padding-left: 1rem; color: #9ca3af; margin: 0.75em 0; }
+        .md-preview hr { border: none; border-top: 1px solid #374151; margin: 1em 0; }
+        /* Images */
+        .md-preview img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 0.5rem 0; border: 1px solid #374151; }
+        .md-img-thumb { max-width: 100%; max-height: 16rem; height: auto; border-radius: 6px; display: block; margin: 0 0 0.75rem; border: 1px solid #374151; object-fit: contain; }
+        /* Broken image placeholder */
+        .broken-img { color: #6b7280; font-style: italic; padding: 0.35rem 0.65rem; border: 1px dashed #374151; border-radius: 4px; display: inline-block; font-size: 0.85em; background: #111827; }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
@@ -120,6 +155,116 @@
     </div>
 
     <script>
+        // ── Utilities ─────────────────────────────────────────────────────────────
+        function escHtml(str) {
+            return String(str == null ? '' : str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // ── Image helpers ─────────────────────────────────────────────────────────
+        const IMAGE_EXTS = new Set(['png','jpg','jpeg','gif','webp','bmp','tiff','tif','heic','heif']);
+
+        function isImageFile(file) {
+            if (file.type && file.type.startsWith('image/')) return true;
+            const ext = (file.name || '').split('.').pop().toLowerCase();
+            return IMAGE_EXTS.has(ext);
+        }
+
+        // Returns a safe, browser-usable src or '' if the URL should be rejected.
+        // Allowed: https?://, data:image/..., blob: (our own object URLs).
+        // Rejected: relative paths, file://, javascript:, everything else.
+        function sanitizeImageSrc(src) {
+            if (!src || typeof src !== 'string') return '';
+            src = src.trim();
+            if (/^https?:\/\//i.test(src)) {
+                // Encode bare spaces; leave existing percent-encoding alone
+                return src.replace(/ /g, '%20');
+            }
+            if (/^data:image\/(png|jpe?g|gif|webp|svg\+xml|bmp|tiff?);base64,/i.test(src)) {
+                return src;
+            }
+            // blob: URLs are created by this app — allow them
+            if (/^blob:/i.test(src)) {
+                return src;
+            }
+            // Relative paths and anything else cannot resolve in this app
+            return '';
+        }
+
+        // After rendering HTML into a container, wire up error → placeholder for each img
+        function setupImageFallbacks(container) {
+            container.querySelectorAll('img').forEach(img => {
+                img.addEventListener('error', function () {
+                    const span = document.createElement('span');
+                    span.className = 'broken-img';
+                    span.textContent = '[Image not found: ' + (this.alt || this.getAttribute('src') || '?') + ']';
+                    this.replaceWith(span);
+                });
+            });
+        }
+
+        // ── marked@4 custom renderer ──────────────────────────────────────────────
+        // marked.use() merges renderer overrides; the image function receives
+        // (href, title, text) in marked v4.
+        if (typeof marked !== 'undefined') {
+            marked.use({
+                gfm: true,
+                renderer: {
+                    image(href, title, text) {
+                        const safeSrc = sanitizeImageSrc(href || '');
+                        const alt = escHtml(text || '');
+                        if (!safeSrc) {
+                            // Relative/unsupported path — show graceful fallback
+                            return '<span class="broken-img">[Image: ' + (alt || escHtml(href || 'image')) + ']</span>';
+                        }
+                        const titleAttr = title ? ' title="' + escHtml(title) + '"' : '';
+                        return '<img src="' + escHtml(safeSrc) + '" alt="' + alt + '"' + titleAttr + ' loading="lazy">';
+                    }
+                }
+            });
+        }
+
+        // Encode bare spaces in image/link destinations before marked tokenizes them.
+        // marked@4 terminates a URL destination at the first bare space, so
+        // `![alt](my file.png)` never reaches the image renderer. We preprocess to
+        // percent-encode spaces (handling optional quoted titles) so marked can parse them.
+        function preprocessMarkdownImages(markdown) {
+            return markdown.replace(/!\[([^\]]*)\]\(([^)]*)\)/g, (match, alt, dest) => {
+                // Detect optional trailing quoted title: `url "title"` or `url 'title'`
+                const tm = dest.match(/^(.*?)\s+(?:"([^"]*)"|'([^']*)')\s*$/);
+                if (tm) {
+                    const url = tm[1].replace(/ /g, '%20');
+                    const title = tm[2] !== undefined ? tm[2] : tm[3];
+                    const q = tm[2] !== undefined ? '"' : "'";
+                    return `![${alt}](${url} ${q}${title}${q})`;
+                }
+                return `![${alt}](${dest.replace(/ /g, '%20')})`;
+            });
+        }
+
+        function renderMarkdown(markdown) {
+            if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+                return '<pre style="white-space:pre-wrap;word-break:break-word;font-size:.875rem;color:#d1d5db;font-family:ui-monospace,monospace">'
+                    + escHtml(markdown) + '</pre>';
+            }
+            const raw = marked.parse(preprocessMarkdownImages(markdown));
+            return DOMPurify.sanitize(raw, {
+                ADD_ATTR: ['loading', 'class'],
+                USE_PROFILES: { html: true }
+            });
+        }
+
+        // ── Object URL lifecycle ──────────────────────────────────────────────────
+        // All blob: URLs created for image previews are tracked here so they can
+        // be revoked on page unload to prevent memory leaks.
+        const activeObjectUrls = new Set();
+        window.addEventListener('beforeunload', () => {
+            activeObjectUrls.forEach(u => URL.revokeObjectURL(u));
+        });
+
         // ── Consent gate ─────────────────────────────────────────────────────────
         const CONSENT_KEY = 'markitdown_consent_v1';
         let consentGiven = localStorage.getItem(CONSENT_KEY) === '1';
@@ -211,17 +356,26 @@
         }
 
         function iconForFile(name) {
-            const ext = name.split('.').pop().toLowerCase();
+            const ext = (name || '').split('.').pop().toLowerCase();
             const map = { pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊',
                           ppt:'📽', pptx:'📽', png:'🖼', jpg:'🖼', jpeg:'🖼',
-                          gif:'🖼', webp:'🖼', html:'🌐', htm:'🌐',
-                          csv:'📊', json:'📋', txt:'📃', md:'📋' };
+                          gif:'🖼', webp:'🖼', svg:'🖼', bmp:'🖼',
+                          html:'🌐', htm:'🌐', csv:'📊', json:'📋', txt:'📃', md:'📋' };
             return map[ext] || '📎';
         }
 
         // Drag and drop — accept all dropped files
-        document.addEventListener('dragover', e => { e.preventDefault(); dragOverlay.classList.remove('hidden'); dropZone.classList.add('drop-active'); });
-        document.addEventListener('dragleave', e => { if (!e.relatedTarget) { dragOverlay.classList.add('hidden'); dropZone.classList.remove('drop-active'); } });
+        document.addEventListener('dragover', e => {
+            e.preventDefault();
+            dragOverlay.classList.remove('hidden');
+            dropZone.classList.add('drop-active');
+        });
+        document.addEventListener('dragleave', e => {
+            if (!e.relatedTarget) {
+                dragOverlay.classList.add('hidden');
+                dropZone.classList.remove('drop-active');
+            }
+        });
         document.addEventListener('drop', e => {
             e.preventDefault();
             dragOverlay.classList.add('hidden');
@@ -229,15 +383,18 @@
             if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
         });
 
-        // Paste file from clipboard
+        // Paste file or image from clipboard
         document.addEventListener('paste', e => {
             const items = e.clipboardData?.items;
             if (!items) return;
-            const fileItems = Array.from(items).filter(i => i.kind === 'file').map(i => i.getAsFile());
+            const fileItems = Array.from(items)
+                .filter(i => i.kind === 'file')
+                .map(i => i.getAsFile())
+                .filter(Boolean);
             if (fileItems.length) { e.preventDefault(); addFiles(fileItems); }
         });
 
-        // Convert
+        // ── Convert ───────────────────────────────────────────────────────────────
         convertBtn.addEventListener('click', convert);
 
         async function convert() {
@@ -262,18 +419,34 @@
 
                 for (let i = 0; i < files.length; i++) {
                     convertLabel.textContent = total > 1 ? `Converting ${i + 1}/${total}…` : 'Converting…';
+                    const file = files[i];
+
+                    // Create a client-side object URL for image files BEFORE sending to the
+                    // server. The server deletes its temp copy immediately after conversion,
+                    // so this is the only way to show the original image in the Preview tab.
+                    let imageObjectUrl = null;
+                    if (isImageFile(file)) {
+                        imageObjectUrl = URL.createObjectURL(file);
+                        activeObjectUrls.add(imageObjectUrl);
+                    }
+
                     try {
-                        const markdown = await convertFile(files[i]);
-                        appendResult(files[i].name, markdown);
+                        const markdown = await convertFile(file);
+                        appendResult(file.name, markdown, imageObjectUrl);
                     } catch (err) {
-                        appendError(`${files[i].name}: ${err.message}`);
+                        // If conversion failed, revoke immediately (won't be displayed)
+                        if (imageObjectUrl) {
+                            URL.revokeObjectURL(imageObjectUrl);
+                            activeObjectUrls.delete(imageObjectUrl);
+                        }
+                        appendError(`${file.name}: ${err.message}`);
                     }
                 }
             } else {
                 convertLabel.textContent = 'Converting…';
                 try {
                     const markdown = await convertText(textInput.value.trim());
-                    appendResult('Pasted text', markdown);
+                    appendResult('Pasted text', markdown, null);
                     textInput.value = '';
                     textInput.style.height = 'auto';
                 } catch (err) {
@@ -305,32 +478,92 @@
             return data.markdown;
         }
 
-        function appendResult(source, markdown) {
+        // ── Result card ───────────────────────────────────────────────────────────
+        // imageObjectUrl: blob: URL for image files (null for non-image conversions).
+        // It is valid for the lifetime of the page (revoked on beforeunload).
+        function appendResult(source, markdown, imageObjectUrl) {
             emptyState.classList.add('hidden');
+
             const card = document.createElement('div');
             card.className = 'bg-gray-900 border border-gray-800 rounded-xl overflow-hidden';
+
+            const slug = source.includes('.')
+                ? source.substring(0, source.lastIndexOf('.'))
+                : source;
+
             card.innerHTML = `
-                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
-                    <span class="text-xs text-gray-400 font-medium truncate">${escHtml(source)}</span>
-                    <div class="flex items-center gap-2 flex-shrink-0 ml-4">
+                <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 gap-2 flex-wrap">
+                    <span class="text-xs text-gray-400 font-medium truncate min-w-0">${escHtml(source)}</span>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <div class="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+                            <button class="tab-raw result-tab tab-active px-2.5 py-1">Raw</button>
+                            <button class="tab-preview result-tab px-2.5 py-1">Preview</button>
+                        </div>
                         <button class="copy-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-gray-800">Copy</button>
                         <button class="save-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-gray-800">Save .md</button>
                     </div>
                 </div>
-                <pre class="px-4 py-3 text-sm text-gray-300 font-mono overflow-x-auto">${escHtml(markdown)}</pre>
+                <pre class="panel-raw px-4 py-3 text-sm text-gray-300 font-mono overflow-x-auto">${escHtml(markdown)}</pre>
+                <div class="panel-preview hidden px-4 py-3 md-preview"></div>
             `;
 
-            const slug = source.includes('.') ? source.substring(0, source.lastIndexOf('.')) : source;
-            card.querySelector('.copy-btn').addEventListener('click', function() {
+            const tabRaw      = card.querySelector('.tab-raw');
+            const tabPreview  = card.querySelector('.tab-preview');
+            const panelRaw    = card.querySelector('.panel-raw');
+            const panelPreview = card.querySelector('.panel-preview');
+
+            tabRaw.addEventListener('click', () => {
+                tabRaw.classList.add('tab-active');
+                tabPreview.classList.remove('tab-active');
+                panelRaw.classList.remove('hidden');
+                panelPreview.classList.add('hidden');
+            });
+
+            tabPreview.addEventListener('click', () => {
+                tabPreview.classList.add('tab-active');
+                tabRaw.classList.remove('tab-active');
+                panelPreview.classList.remove('hidden');
+                panelRaw.classList.add('hidden');
+
+                // Render lazily on first click
+                if (!panelPreview.dataset.rendered) {
+                    // Sanitized markdown HTML goes in first
+                    panelPreview.innerHTML = renderMarkdown(markdown);
+                    setupImageFallbacks(panelPreview);
+
+                    // For uploaded/dropped/pasted image files, prepend the actual image
+                    // using the client-side blob URL. We do this programmatically (not via
+                    // innerHTML) so the blob: URL is never passed through DOMPurify, which
+                    // may strip non-http(s) schemes depending on its config.
+                    if (imageObjectUrl) {
+                        const imgEl = document.createElement('img');
+                        imgEl.src = imageObjectUrl;
+                        imgEl.alt = source;
+                        imgEl.loading = 'lazy';
+                        imgEl.className = 'md-img-thumb';
+                        imgEl.addEventListener('error', function () {
+                            this.remove();
+                        });
+                        panelPreview.prepend(imgEl);
+                    }
+
+                    panelPreview.dataset.rendered = '1';
+                }
+            });
+
+            card.querySelector('.copy-btn').addEventListener('click', function () {
                 navigator.clipboard.writeText(markdown);
                 this.textContent = 'Copied!';
-                setTimeout(() => this.textContent = 'Copy', 1500);
+                setTimeout(() => (this.textContent = 'Copy'), 1500);
             });
+
             card.querySelector('.save-btn').addEventListener('click', () => {
                 const blob = new Blob([markdown], { type: 'text/markdown' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
-                a.href = url; a.download = slug + '.md'; a.click();
+                a.href = url;
+                a.download = slug + '.md';
+                a.click();
                 URL.revokeObjectURL(url);
             });
 
@@ -345,10 +578,6 @@
             el.textContent = 'Error: ' + msg;
             results.appendChild(el);
             el.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
-
-        function escHtml(str) {
-            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
     </script>
 </body>
