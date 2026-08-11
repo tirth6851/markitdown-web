@@ -2,24 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#030712">
     <title>MarkItDown Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked@4/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
     <style>
+        html { -webkit-text-size-adjust: 100%; }
+        body { min-height: 100svh; }
         .drop-active { border-color: #4ade80 !important; background-color: #14532d22 !important; }
         #dropZone { transition: border-color 0.15s, background-color 0.15s; }
         #textInput { resize: none; field-sizing: content; min-height: 44px; max-height: 200px; }
         .copy-btn:active { transform: scale(0.95); }
         pre { white-space: pre-wrap; word-break: break-word; }
 
+        /* Respect iOS/Android safe areas (notch, home indicator) */
+        header.app-header { padding-top: max(1rem, env(safe-area-inset-top)) !important; }
+        .input-bar { padding-bottom: max(1rem, env(safe-area-inset-bottom)) !important; }
+
         /* Tab state — not Tailwind so it works reliably with dynamic JS toggles */
         .result-tab { color: #6b7280; transition: color 0.15s, background-color 0.15s; }
         .result-tab.tab-active { background: #374151; color: #f3f4f6; }
 
         /* Markdown rendered preview */
-        .md-preview { color: #d1d5db; line-height: 1.65; font-size: 0.875rem; }
+        .md-preview { color: #d1d5db; line-height: 1.65; font-size: 0.875rem; overflow-wrap: anywhere; word-break: break-word; }
         .md-preview h1,.md-preview h2,.md-preview h3,
         .md-preview h4,.md-preview h5,.md-preview h6 { color: #f3f4f6; font-weight: 600; margin: 1em 0 0.4em; }
         .md-preview h1 { font-size: 1.4em; border-bottom: 1px solid #374151; padding-bottom: 0.25em; }
@@ -51,8 +58,8 @@
 <body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col font-sans">
 
     <!-- Privacy / Consent Modal -->
-    <div id="consentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm">
-        <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-md w-full mx-4 p-6 shadow-2xl">
+    <div id="consentModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-md w-full p-6 shadow-2xl max-h-full overflow-y-auto">
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-8 h-8 rounded-lg bg-yellow-500 flex items-center justify-center text-gray-950 font-bold text-base">!</div>
                 <h2 class="text-white font-semibold text-lg">Before you continue</h2>
@@ -88,24 +95,24 @@
     </div>
 
     <!-- Header -->
-    <header class="border-b border-gray-800 px-6 py-4 flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center text-gray-950 font-bold text-sm">M↓</div>
-        <h1 class="text-lg font-semibold text-white">MarkItDown</h1>
-        <span class="text-xs text-gray-500 ml-1">File &amp; text to Markdown converter</span>
+    <header class="app-header border-b border-gray-800 px-4 sm:px-6 py-4 flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center text-gray-950 font-bold text-sm flex-shrink-0">M↓</div>
+        <h1 class="text-lg font-semibold text-white flex-shrink-0">MarkItDown</h1>
+        <span class="hidden sm:inline text-xs text-gray-500 ml-1 truncate">File &amp; text to Markdown converter</span>
     </header>
 
     <!-- Output area -->
     <main class="flex-1 overflow-y-auto px-4 py-6 max-w-3xl w-full mx-auto flex flex-col gap-4" id="outputArea">
         <div id="emptyState" class="flex-1 flex flex-col items-center justify-center text-gray-600 select-none py-16">
             <div class="text-5xl mb-4">📄</div>
-            <p class="text-lg font-medium text-gray-500">Drop files, paste text, or attach files below</p>
-            <p class="text-sm mt-1">Supports PDF, Word, Excel, PowerPoint, images, HTML, and more</p>
+            <p class="text-lg font-medium text-gray-500 text-center">Drop files, paste text, or attach files below</p>
+            <p class="text-sm mt-1 text-center px-4">Supports PDF, Word, Excel, PowerPoint, images, HTML, and more</p>
         </div>
         <div id="results" class="flex flex-col gap-4"></div>
     </main>
 
     <!-- Chat-style input box -->
-    <div class="border-t border-gray-800 bg-gray-950 px-4 py-4">
+    <div class="input-bar border-t border-gray-800 bg-gray-950 px-4 py-4">
         <div class="max-w-3xl mx-auto">
             <div id="dropZone"
                  class="relative border border-gray-700 rounded-2xl bg-gray-900 focus-within:border-green-500 transition-colors">
@@ -125,7 +132,7 @@
                 <div class="flex items-center justify-between px-3 pb-3">
                     <div class="flex items-center gap-2">
                         <button id="attachBtn"
-                                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1.5 rounded-lg hover:bg-gray-800">
+                                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-green-400 transition-colors px-2.5 py-2.5 sm:py-1.5 rounded-lg hover:bg-gray-800">
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                             </svg>
@@ -136,7 +143,7 @@
 
                     <!-- Convert button -->
                     <button id="convertBtn"
-                            class="flex items-center gap-1.5 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-gray-950 text-xs font-semibold px-4 py-2 rounded-xl transition-colors">
+                            class="flex items-center gap-1.5 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed text-gray-950 text-xs font-semibold px-4 py-2.5 sm:py-2 rounded-xl transition-colors">
                         <span id="convertLabel">Convert</span>
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -496,11 +503,11 @@
                     <span class="text-xs text-gray-400 font-medium truncate min-w-0">${escHtml(source)}</span>
                     <div class="flex items-center gap-2 flex-shrink-0">
                         <div class="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
-                            <button class="tab-raw result-tab tab-active px-2.5 py-1">Raw</button>
-                            <button class="tab-preview result-tab px-2.5 py-1">Preview</button>
+                            <button class="tab-raw result-tab tab-active px-2.5 py-1.5">Raw</button>
+                            <button class="tab-preview result-tab px-2.5 py-1.5">Preview</button>
                         </div>
-                        <button class="copy-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-gray-800">Copy</button>
-                        <button class="save-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1 rounded hover:bg-gray-800">Save .md</button>
+                        <button class="copy-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1.5 rounded hover:bg-gray-800">Copy</button>
+                        <button class="save-btn text-xs text-gray-500 hover:text-green-400 transition-colors px-2 py-1.5 rounded hover:bg-gray-800">Save .md</button>
                     </div>
                 </div>
                 <pre class="panel-raw px-4 py-3 text-sm text-gray-300 font-mono overflow-x-auto">${escHtml(markdown)}</pre>
